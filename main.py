@@ -48,7 +48,7 @@ last_modified_time = None
 # Settings storage (simple in-memory dict)
 settings = {
     'brightness': 1.0,
-    'yolo_enabled': True,
+    'yolo_enabled': False,
     'histogram_eq': False,
     'gaussian_blur': False
 }
@@ -88,7 +88,7 @@ def upload():
         f.write(image_data)
     
     # Process with YOLO if enabled and available
-    if yolo_detector and yolo_detector.is_available() and settings.get('yolo_enabled', True):
+    if yolo_detector and yolo_detector.is_available() and settings.get('yolo_enabled', False):
         try:
             annotated_img = yolo_detector.detect(
                 LATEST_IMAGE_PATH,

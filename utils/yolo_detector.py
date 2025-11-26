@@ -92,47 +92,97 @@ class YOLODetector:
         detections.sort(key=lambda x: x['confidence'], reverse=True)
         detections = detections[:max_objects]
         
-        # Draw bounding boxes
-        colors = {
-            'person': (255, 0, 0),
-            'car': (0, 255, 0),
-            'bicycle': (0, 0, 255),
-            'dog': (255, 165, 0),
-            'cat': (255, 20, 147),
-        }
+        # Mint green color for dashed borders (#2A9D8F)
+        mint_color = (42, 157, 143)  # RGB for #2A9D8F
         
         for det in detections:
             x1, y1, x2, y2 = det['bbox']
             class_name = det['class']
             confidence = det['confidence']
             
-            # Get color for this class (default to cyan)
-            color = colors.get(class_name, (0, 255, 255))
+            # Draw dashed border rectangle with rounded corners
+            # Since PIL doesn't support dashed lines directly, we'll draw multiple small segments
+            # For a retro look, we'll use a thicker dashed pattern
+            border_width = 2
+            dash_length = 8
+            gap_length = 4
             
-            # Draw rectangle
-            draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+            # Draw top border (dashed)
+            for x in range(int(x1), int(x2), dash_length + gap_length):
+                draw.rectangle([x, y1, min(x + dash_length, x2), y1 + border_width], 
+                             fill=mint_color, outline=mint_color)
             
-            # Draw label background
+            # Draw bottom border (dashed)
+            for x in range(int(x1), int(x2), dash_length + gap_length):
+                draw.rectangle([x, y2 - border_width, min(x + dash_length, x2), y2], 
+                             fill=mint_color, outline=mint_color)
+            
+            # Draw left border (dashed)
+            for y in range(int(y1), int(y2), dash_length + gap_length):
+                draw.rectangle([x1, y, x1 + border_width, min(y + dash_length, y2)], 
+                             fill=mint_color, outline=mint_color)
+            
+            # Draw right border (dashed)
+            for y in range(int(y1), int(y2), dash_length + gap_length):
+                draw.rectangle([x2 - border_width, y, x2, min(y + dash_length, y2)], 
+                             fill=mint_color, outline=mint_color)
+            
+            # Draw rounded corners (small circles at corners to simulate rounded rect)
+            corner_radius = 12
+            # Top-left corner
+            draw.ellipse([x1, y1, x1 + corner_radius, y1 + corner_radius], 
+                        fill=mint_color, outline=mint_color)
+            # Top-right corner
+            draw.ellipse([x2 - corner_radius, y1, x2, y1 + corner_radius], 
+                        fill=mint_color, outline=mint_color)
+            # Bottom-left corner
+            draw.ellipse([x1, y2 - corner_radius, x1 + corner_radius, y2], 
+                        fill=mint_color, outline=mint_color)
+            # Bottom-right corner
+            draw.ellipse([x2 - corner_radius, y2 - corner_radius, x2, y2], 
+                        fill=mint_color, outline=mint_color)
+            
+            # Draw pill-shaped label above the box
             label = f"{class_name}: {confidence:.2f}"
             try:
-                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)
-            except:
+                # Try to use a pixel font-like font, fallback to default
                 try:
-                    font = ImageFont.truetype("Arial.ttf", 16)
+                    font = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", 14)
                 except:
-                    font = ImageFont.load_default()
+                    try:
+                        font = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf", 14)
+                    except:
+                        font = ImageFont.load_default()
+            except:
+                font = ImageFont.load_default()
             
             # Get text size
             bbox = draw.textbbox((0, 0), label, font=font)
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
             
-            # Draw label background
-            draw.rectangle([x1, y1 - text_height - 4, x1 + text_width + 4, y1], 
-                          fill=color, outline=color)
+            # Calculate pill position (centered above the box)
+            pill_width = text_width + 16
+            pill_height = text_height + 8
+            pill_x = (x1 + x2) / 2 - pill_width / 2
+            pill_y = y1 - pill_height - 8
             
-            # Draw label text
-            draw.text((x1 + 2, y1 - text_height - 2), label, fill=(255, 255, 255), font=font)
+            # Draw white pill background (rounded rectangle)
+            # Top rounded part
+            draw.ellipse([pill_x, pill_y, pill_x + pill_height, pill_y + pill_height], 
+                        fill=(255, 255, 255), outline=(255, 255, 255))
+            draw.ellipse([pill_x + pill_width - pill_height, pill_y, 
+                         pill_x + pill_width, pill_y + pill_height], 
+                        fill=(255, 255, 255), outline=(255, 255, 255))
+            # Rectangular middle
+            draw.rectangle([pill_x + pill_height / 2, pill_y, 
+                          pill_x + pill_width - pill_height / 2, pill_y + pill_height], 
+                         fill=(255, 255, 255), outline=(255, 255, 255))
+            
+            # Draw label text in mint color
+            text_x = pill_x + 8
+            text_y = pill_y + (pill_height - text_height) / 2
+            draw.text((text_x, text_y), label, fill=mint_color, font=font)
         
         # Convert back to numpy array and then to BGR for saving
         img_array = np.array(pil_img)

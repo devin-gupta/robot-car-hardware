@@ -126,21 +126,45 @@ class RobotController:
         Returns:
             Dictionary with motor speeds {fl, fr, bl, br}
         """
-        effective_base = self.base_velocity
-        
-        # Special case: if base is 0 and we're turning, set appropriate base speed
-        # to ensure motors meet minimum threshold
+        # Special case: if base is 0 and we're turning, turn in place
+        # Left turn: left motors backward (negative), right motors forward (positive)
+        # Right turn: left motors forward (positive), right motors backward (negative)
         if self.base_velocity == 0 and self.turn_differential != 0:
-            # Set base to accommodate turn differential
-            # With base=245 and diff=±15: one side=230, other side=255 (after capping)
             abs_diff = abs(self.turn_differential)
-            if abs_diff <= 25:
-                effective_base = 245  # Works well for typical turn ranges
+            
+            # Ensure minimum speed for turning in place
+            if abs_diff < self.MIN_SPEED:
+                abs_diff = self.MIN_SPEED
+            
+            # Cap at maximum
+            if abs_diff > self.MAX_SPEED:
+                abs_diff = self.MAX_SPEED
+            
+            # Left turn (negative differential): left backward, right forward
+            # Right turn (positive differential): left forward, right backward
+            if self.turn_differential < 0:
+                # Left turn - left motors backward, right motors forward
+                fl = -abs_diff
+                fr = abs_diff
+                bl = -abs_diff
+                br = abs_diff
             else:
-                # For very large diffs, adjust base to minimize invalid speeds
-                effective_base = max(245, min(255 - abs_diff, 230 + abs_diff))
-                if effective_base < 230:
-                    effective_base = 245  # Fallback
+                # Right turn - left motors forward, right motors backward
+                fl = abs_diff
+                fr = -abs_diff
+                bl = abs_diff
+                br = -abs_diff
+            
+            # Constrain (though they should already be in valid range)
+            fl = self.constrain_motor_speed(fl)
+            fr = self.constrain_motor_speed(fr)
+            bl = self.constrain_motor_speed(bl)
+            br = self.constrain_motor_speed(br)
+            
+            return {'fl': fl, 'fr': fr, 'bl': bl, 'br': br}
+        
+        # Normal case: base velocity is non-zero, apply turn differential
+        effective_base = self.base_velocity
         
         # Apply turn differential
         # Left motors get +turn_differential, right motors get -turn_differential
@@ -156,13 +180,6 @@ class RobotController:
         fr = self.constrain_motor_speed(fr)
         bl = self.constrain_motor_speed(bl)
         br = self.constrain_motor_speed(br)
-        
-        # If all motors ended up at 0 when we were trying to turn from 0, reset turn differential
-        if (self.base_velocity == 0 and fl == 0 and fr == 0 and bl == 0 and br == 0 
-            and self.turn_differential != 0):
-            self.turn_differential = 0
-            # Recalculate with turn_differential = 0
-            fl = fr = bl = br = 0
         
         return {'fl': fl, 'fr': fr, 'bl': bl, 'br': br}
     
