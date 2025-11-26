@@ -463,32 +463,24 @@
         
         // ==================== ROBOT CONTROL ====================
         
-        // Robot state
-        let baseVelocity = 0;  // -255 to 255
-        let turnDifferential = 0;  // accumulated turn difference
-        
-        // Motor speed constraints
-        const MIN_SPEED = 230;
-        const MAX_SPEED = 255;
-        const VELOCITY_STEP = 5;
-        const TURN_STEP = 15;
-        
         // Key state tracking to prevent repeat
         const keyState = {};
         
-        // Update rover visualization
-        function updateRoverViz() {
-            const motors = calculateMotorSpeeds();
+        // Update rover visualization from server state
+        function updateRoverViz(state) {
+            if (!state) return;
+            
+            const motors = state.motors || {};
             
             // Update wheel displays
-            updateWheel('wheel-fl', motors.fl);
-            updateWheel('wheel-fr', motors.fr);
-            updateWheel('wheel-bl', motors.bl);
-            updateWheel('wheel-br', motors.br);
+            updateWheel('wheel-fl', motors.fl || 0);
+            updateWheel('wheel-fr', motors.fr || 0);
+            updateWheel('wheel-bl', motors.bl || 0);
+            updateWheel('wheel-br', motors.br || 0);
             
             // Update info display
-            document.getElementById('base-vel').textContent = baseVelocity;
-            document.getElementById('turn-diff').textContent = turnDifferential;
+            document.getElementById('base-vel').textContent = state.base_velocity || 0;
+            document.getElementById('turn-diff').textContent = state.turn_differential || 0;
         }
         
         function updateWheel(id, speed) {
@@ -508,173 +500,44 @@
             }
         }
         
-        // Calculate motor speeds with constraints
-        function calculateMotorSpeeds() {
-            let fl, fr, bl, br;
-            let effectiveBase = baseVelocity;
-            
-            // Special case: if base is 0 and we're turning, set appropriate base speed
-            // to ensure motors meet minimum threshold
-            if (baseVelocity === 0 && turnDifferential !== 0) {
-                // Set base to accommodate turn differential
-                // With base=245 and diff=±15: one side=230, other side=255 (after capping)
-                // For larger diffs, calculate required base but ensure it's feasible
-                const absDiff = Math.abs(turnDifferential);
-                // Need: effectiveBase - absDiff >= 230 AND effectiveBase + absDiff <= 255
-                // This requires: effectiveBase >= 230 + absDiff AND effectiveBase <= 255 - absDiff
-                // This is only possible if: 230 + absDiff <= 255 - absDiff, i.e., absDiff <= 12.5
-                // For diffs > 12.5, we'll use base=245 and let constraint handle the rest
-                if (absDiff <= 25) {
-                    effectiveBase = 245;  // Works well for typical turn ranges
-                } else {
-                    // For very large diffs, adjust base to minimize invalid speeds
-                    effectiveBase = Math.max(245, Math.min(255 - absDiff, 230 + absDiff));
-                    if (effectiveBase < 230) {
-                        effectiveBase = 245;  // Fallback
-                    }
-                }
-            }
-            
-            // Apply turn differential
-            // Left motors get +turnDifferential, right motors get -turnDifferential
-            // For left turn (negative diff): left slower, right faster
-            // For right turn (positive diff): left faster, right slower
-            fl = effectiveBase + turnDifferential;
-            fr = effectiveBase - turnDifferential;
-            bl = effectiveBase + turnDifferential;
-            br = effectiveBase - turnDifferential;
-            
-            // Constrain each motor to valid range
-            fl = constrainMotorSpeed(fl);
-            fr = constrainMotorSpeed(fr);
-            bl = constrainMotorSpeed(bl);
-            br = constrainMotorSpeed(br);
-            
-            // If all motors ended up at 0 when we were trying to turn from 0, reset turn differential
-            if (baseVelocity === 0 && fl === 0 && fr === 0 && bl === 0 && br === 0 && turnDifferential !== 0) {
-                turnDifferential = 0;
-                // Recalculate with turnDifferential = 0
-                fl = fr = bl = br = 0;
-            }
-            
-            return { fl, fr, bl, br };
-        }
-        
-        function constrainMotorSpeed(speed) {
-            if (speed === 0) return 0;
-            
-            const absSpeed = Math.abs(speed);
-            
-            // If speed is non-zero but below minimum, set to 0
-            if (absSpeed < MIN_SPEED) {
-                return 0;
-            }
-            
-            // Cap at maximum
-            if (absSpeed > MAX_SPEED) {
-                return speed > 0 ? MAX_SPEED : -MAX_SPEED;
-            }
-            
-            // Ensure it's within valid range
-            if (absSpeed >= MIN_SPEED && absSpeed <= MAX_SPEED) {
-                return speed;
-            }
-            
-            return 0;
-        }
-        
-        // Handle velocity changes
-        function adjustVelocity(direction) {
-            if (direction === 'up') {
-                // Increment forward
-                if (baseVelocity === 0) {
-                    // Jump directly to minimum valid speed when starting from 0
-                    baseVelocity = MIN_SPEED;
-                } else if (baseVelocity > 0) {
-                    baseVelocity = Math.min(baseVelocity + VELOCITY_STEP, MAX_SPEED);
-                } else {
-                    // Coming from negative, move toward 0
-                    baseVelocity = Math.min(baseVelocity + VELOCITY_STEP, 0);
-                }
-            } else if (direction === 'down') {
-                // Decrement or go backward
-                if (baseVelocity === 0) {
-                    // Jump directly to minimum valid backward speed when starting from 0
-                    baseVelocity = -MIN_SPEED;
-                } else if (baseVelocity > 0) {
-                    // Moving from positive toward 0
-                    baseVelocity = Math.max(baseVelocity - VELOCITY_STEP, 0);
-                } else {
-                    // Moving backward (negative)
-                    baseVelocity = Math.max(baseVelocity - VELOCITY_STEP, -MAX_SPEED);
-                }
-            }
-            
-            // Check if baseVelocity is in invalid range (between 0 and MIN_SPEED, or between -MIN_SPEED and 0)
-            // If so, set it to 0 to ensure clean zero crossing
-            if (baseVelocity > 0 && baseVelocity < MIN_SPEED) {
-                baseVelocity = 0;
-            } else if (baseVelocity < 0 && baseVelocity > -MIN_SPEED) {
-                baseVelocity = 0;
-            }
-            
-            // If base becomes 0, reset turn differential if needed
-            if (baseVelocity === 0 && turnDifferential !== 0) {
-                // Keep differential but will need special handling in calculateMotorSpeeds
-            }
-            
-            updateAndSend();
-        }
-        
-        // Handle turn changes
-        function adjustTurn(direction) {
-            if (direction === 'left') {
-                turnDifferential = Math.max(turnDifferential - TURN_STEP, -MAX_SPEED);
-            } else if (direction === 'right') {
-                turnDifferential = Math.min(turnDifferential + TURN_STEP, MAX_SPEED);
-            }
-            
-            // If base is 0 and we're turning, we'll handle it in calculateMotorSpeeds
-            updateAndSend();
-        }
-        
-        // Kill switch
-        function killSwitch() {
-            baseVelocity = 0;
-            turnDifferential = 0;
-            updateAndSend();
-        }
-        
-        // Update visualization and send commands
-        function updateAndSend() {
-            updateRoverViz();
-            sendMotorCommand();
-        }
-        
-        // Send motor command to server
-        async function sendMotorCommand() {
-            const motors = calculateMotorSpeeds();
-            
+        // Send robot command to backend
+        async function sendRobotCommand(command, direction = null) {
             try {
-                const response = await fetch('/robot/move', {
+                const payload = { command };
+                if (direction) {
+                    payload.direction = direction;
+                }
+                
+                const response = await fetch('/robot/command', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        fl: motors.fl,
-                        fr: motors.fr,
-                        bl: motors.bl,
-                        br: motors.br
-                    })
+                    body: JSON.stringify(payload)
                 });
                 
+                const data = await response.json();
+                
+                if (data.state) {
+                    updateRoverViz(data.state);
+                }
+                
                 if (!response.ok) {
-                    const error = await response.json();
-                    console.error('Robot command failed:', error);
+                    console.error('Robot command failed:', data);
                 }
             } catch (err) {
                 console.error('Error sending robot command:', err);
+            }
+        }
+        
+        // Load current robot state
+        async function loadRobotState() {
+            try {
+                const response = await fetch('/robot/state');
+                const state = await response.json();
+                updateRoverViz(state);
+            } catch (err) {
+                console.error('Error loading robot state:', err);
             }
         }
         
@@ -693,20 +556,20 @@
             
             switch (e.key) {
                 case 'ArrowUp':
-                    adjustVelocity('up');
+                    sendRobotCommand('velocity', 'up');
                     break;
                 case 'ArrowDown':
-                    adjustVelocity('down');
+                    sendRobotCommand('velocity', 'down');
                     break;
                 case 'ArrowLeft':
-                    adjustTurn('left');
+                    sendRobotCommand('turn', 'left');
                     break;
                 case 'ArrowRight':
-                    adjustTurn('right');
+                    sendRobotCommand('turn', 'right');
                     break;
                 case 'k':
                 case 'K':
-                    killSwitch();
+                    sendRobotCommand('kill');
                     break;
             }
         });
@@ -715,11 +578,8 @@
             keyState[e.key] = false;
         });
         
-        // Initialize rover visualization
-        updateRoverViz();
-        
-        // Send initial stop command
-        sendMotorCommand();
+        // Initialize rover visualization on page load
+        loadRobotState();
     </script>
 </body>
 </html>

@@ -18,9 +18,13 @@ from utils.config import (
     LATEST_DETECTED_PATH,
     ROBOT_IP,
 )
+from utils.robot_controller import RobotController
 
 app = Flask(__name__)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Initialize robot controller
+robot_controller = RobotController()
 
 # Initialize YOLO detector if enabled
 yolo_detector = None
@@ -148,9 +152,94 @@ def update_settings():
     return jsonify(settings)
 
 
+def send_motor_command_to_robot(motors: dict) -> tuple:
+    """
+    Send motor command to ESP32 robot.
+    
+    Args:
+        motors: Dictionary with motor speeds {fl, fr, bl, br}
+        
+    Returns:
+        Tuple of (success: bool, response_data: dict or error_message: str)
+    """
+    try:
+        robot_url = f"http://{ROBOT_IP}/move"
+        response = requests.post(
+            robot_url,
+            json=motors,
+            headers={'Content-Type': 'application/json'},
+            timeout=2
+        )
+        
+        if response.status_code == 200:
+            return True, {"status": "ok", "robot_response": response.text}
+        else:
+            return False, {"error": f"Robot returned status {response.status_code}", "robot_response": response.text}
+    except requests.exceptions.RequestException as e:
+        print(f"Error communicating with robot: {e}")
+        return False, {"error": "Failed to communicate with robot", "details": str(e)}
+
+
+@app.route("/robot/command", methods=["POST"])
+def robot_command():
+    """Handle robot control commands (velocity, turn, kill)."""
+    try:
+        data = request.get_json()
+        command = data.get('command')
+        
+        if command == 'velocity':
+            direction = data.get('direction')  # 'up' or 'down'
+            if direction not in ['up', 'down']:
+                return jsonify({"error": "Invalid direction. Must be 'up' or 'down'"}), 400
+            motors = robot_controller.adjust_velocity(direction)
+        elif command == 'turn':
+            direction = data.get('direction')  # 'left' or 'right'
+            if direction not in ['left', 'right']:
+                return jsonify({"error": "Invalid direction. Must be 'left' or 'right'"}), 400
+            motors = robot_controller.adjust_turn(direction)
+        elif command == 'kill':
+            motors = robot_controller.kill_switch()
+        else:
+            return jsonify({"error": "Invalid command. Must be 'velocity', 'turn', or 'kill'"}), 400
+        
+        # Send to ESP32
+        success, result = send_motor_command_to_robot(motors)
+        
+        if success:
+            state = robot_controller.get_state()
+            return jsonify({
+                "status": "ok",
+                "state": state,
+                **result
+            }), 200
+        else:
+            # Still return state even if robot communication failed
+            state = robot_controller.get_state()
+            return jsonify({
+                "status": "error",
+                "state": state,
+                **result
+            }), 503
+            
+    except Exception as e:
+        print(f"Error in robot_command endpoint: {e}")
+        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+
+
+@app.route("/robot/state", methods=["GET"])
+def robot_state():
+    """Get current robot state."""
+    try:
+        state = robot_controller.get_state()
+        return jsonify(state), 200
+    except Exception as e:
+        print(f"Error in robot_state endpoint: {e}")
+        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+
+
 @app.route("/robot/move", methods=["POST"])
 def robot_move():
-    """Forward motor commands to ESP32 robot."""
+    """Direct motor command endpoint (for backwards compatibility)."""
     try:
         data = request.get_json()
         
@@ -170,22 +259,13 @@ def robot_move():
                 return jsonify({"error": f"{field} must be 0 or between -255 and -230, or 230 and 255"}), 400
         
         # Forward to ESP32
-        robot_url = f"http://{ROBOT_IP}/move"
-        response = requests.post(
-            robot_url,
-            json=data,
-            headers={'Content-Type': 'application/json'},
-            timeout=2
-        )
+        success, result = send_motor_command_to_robot(data)
         
-        if response.status_code == 200:
-            return jsonify({"status": "ok", "robot_response": response.text}), 200
+        if success:
+            return jsonify(result), 200
         else:
-            return jsonify({"error": f"Robot returned status {response.status_code}", "robot_response": response.text}), response.status_code
+            return jsonify(result), 503
             
-    except requests.exceptions.RequestException as e:
-        print(f"Error communicating with robot: {e}")
-        return jsonify({"error": "Failed to communicate with robot", "details": str(e)}), 503
     except Exception as e:
         print(f"Error in robot_move endpoint: {e}")
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
