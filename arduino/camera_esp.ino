@@ -22,19 +22,47 @@
 #define PCLK_GPIO_NUM    13
 
 // ==== WIFI CREDENTIALS ====
-const char* ssid = "rock";
-const char* password = "qwertyuiop";
+const char* ssid = "devin";
+const char* password = "qwertyui";
 
 // ==== SERVER CONFIG ====
-const char* serverUrl = "http://192.168.0.152:8080/upload";  // replace with your Mac’s local IP (e.g. 192.168.1.42)
+const char* serverUrl = "http://172.20.10.3:8080/upload";  // replace with your Mac’s local IP (e.g. 192.168.1.42)
 
 // ==== SETUP ====
 void setup() {
   Serial.begin(115200);
+  Serial.print("Starting Script ");
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi ");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
+
+    // Check and print the current WiFi status
+    switch (WiFi.status()) {
+      case WL_NO_SHIELD:
+        Serial.print("No Shield");
+        break;
+      case WL_IDLE_STATUS:
+        Serial.print("Idle");
+        break;
+      case WL_NO_SSID_AVAIL:
+        Serial.print("SSID Not Found");
+        break;
+      case WL_SCAN_COMPLETED:
+        Serial.print("Scan Completed");
+        break;
+      case WL_CONNECT_FAILED:
+        Serial.print("Connect Failed!");
+        break;
+      case WL_CONNECTION_LOST:
+        Serial.print("Connection Lost");
+        break;
+      case WL_DISCONNECTED:
+        Serial.print("Disconnected");
+        break;
+      // WL_CONNECTED is handled by the while loop condition
+    }
+
     Serial.print(".");
   }
   Serial.println("\nConnected!");
@@ -65,8 +93,8 @@ void setup() {
   config.pixel_format = PIXFORMAT_JPEG; 
 
   // Use a small frame to start (try QQVGA = 160x120)
-  config.frame_size   = FRAMESIZE_SVGA;  
-  config.jpeg_quality = 10;
+  config.frame_size   = FRAMESIZE_VGA;  
+  config.jpeg_quality = 8;
   config.fb_count     = 2;
   config.fb_location  = CAMERA_FB_IN_PSRAM;  // <— Use PSRAM
 
@@ -85,7 +113,7 @@ void loop() {
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
       Serial.println("Camera capture failed");
-      delay(1000);
+      delay(500);
       return;
     }
 
