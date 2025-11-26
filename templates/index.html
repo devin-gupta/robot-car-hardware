@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arduino Camera Feed{% if yolo_enabled %} - Object Detection{% endif %}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            max-width: 1400px;
+            width: 100%;
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+        }
+        
+        .main-content {
+            flex: 1;
+            text-align: center;
+        }
+        
+        .settings-panel {
+            width: 280px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+        
+        .settings-panel h2 {
+            color: #333;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        
+        .setting-item {
+            margin-bottom: 20px;
+        }
+        
+        .setting-item label {
+            display: block;
+            color: #555;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .setting-item input[type="range"] {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+        
+        .setting-item input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        
+        .setting-item .value {
+            color: #888;
+            font-size: 0.85em;
+        }
+        
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        
+        h1 {
+            color: #333;
+            font-weight: 600;
+            font-size: 2em;
+            margin-bottom: 10px;
+            letter-spacing: -0.5px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 30px;
+        }
+        
+        .video-container {
+            position: relative;
+            display: inline-block;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 16px;
+            padding: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            max-width: 100%;
+        }
+        
+        img {
+            max-width: 100%;
+            max-height: 70vh;
+            border-radius: 12px;
+            display: block;
+            object-fit: contain;
+            background: #000;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            width: 100%;
+            height: auto;
+        }
+        
+        img.visible {
+            opacity: 1;
+        }
+        
+        .status {
+            margin-top: 20px;
+            color: #888;
+            font-size: 0.85em;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .loading {
+            color: #999;
+            font-style: italic;
+        }
+        
+        .robot-control {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+        
+        .robot-control h2 {
+            color: #333;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        
+        .rover-viz {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .rover-body {
+            position: relative;
+            width: 200px;
+            height: 150px;
+            margin: 0 auto;
+            background: #4a5568;
+            border-radius: 8px;
+            border: 2px solid #2d3748;
+        }
+        
+        .wheel {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: #718096;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.85em;
+            border: 3px solid #2d3748;
+            color: white;
+            transition: all 0.2s;
+        }
+        
+        .wheel.fl {
+            top: 10px;
+            left: 10px;
+        }
+        
+        .wheel.fr {
+            top: 10px;
+            right: 10px;
+        }
+        
+        .wheel.bl {
+            bottom: 10px;
+            left: 10px;
+        }
+        
+        .wheel.br {
+            bottom: 10px;
+            right: 10px;
+        }
+        
+        .wheel.forward {
+            background: #48bb78;
+        }
+        
+        .wheel.backward {
+            background: #f56565;
+        }
+        
+        .wheel.stopped {
+            background: #718096;
+        }
+        
+        .control-info {
+            margin-top: 15px;
+            padding: 12px;
+            background: #edf2f7;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        
+        .control-info div {
+            margin: 5px 0;
+            color: #4a5568;
+        }
+        
+        .control-info .label {
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .keyboard-hint {
+            margin-top: 15px;
+            padding: 10px;
+            background: #fff3cd;
+            border-radius: 6px;
+            font-size: 0.85em;
+            color: #856404;
+            border-left: 3px solid #ffc107;
+        }
+        
+        .keyboard-hint strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <h1>🎥 Arduino Camera Feed</h1>
+            <p class="subtitle">{% if yolo_enabled %}Real-time Object Detection with YOLO{% else %}Live Camera Stream{% endif %}</p>
+            
+            <div class="video-container">
+                <img id="camera" src="{{ image_url }}" alt="Live Feed" onerror="this.onerror=null; this.src='/static/latest.jpg';">
+            </div>
+            
+            <div class="status">
+                <span class="status-dot"></span>
+                <span id="status-text">Connecting...</span>
+            </div>
+        </div>
+        
+        <div class="settings-panel">
+            <h2>⚙️ Settings</h2>
+            
+            <div class="setting-item">
+                <label for="brightness">Brightness</label>
+                <input type="range" id="brightness" min="0.5" max="2.0" step="0.1" value="1.0">
+                <span class="value" id="brightness-value">1.0</span>
+            </div>
+            
+            <div class="setting-item">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="yolo-enabled" checked>
+                    <span>Enable YOLO</span>
+                </label>
+            </div>
+            
+            <div class="setting-item">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="histogram-eq">
+                    <span>Histogram Equalization</span>
+                </label>
+            </div>
+            
+            <div class="setting-item">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="gaussian-blur">
+                    <span>Gaussian Blur</span>
+                </label>
+            </div>
+            
+            <div class="robot-control">
+                <h2>🤖 Robot Control</h2>
+                
+                <div class="rover-viz">
+                    <div class="rover-body">
+                        <div class="wheel fl stopped" id="wheel-fl">0</div>
+                        <div class="wheel fr stopped" id="wheel-fr">0</div>
+                        <div class="wheel bl stopped" id="wheel-bl">0</div>
+                        <div class="wheel br stopped" id="wheel-br">0</div>
+                    </div>
+                    
+                    <div class="control-info">
+                        <div><span class="label">Base Velocity:</span> <span id="base-vel">0</span></div>
+                        <div><span class="label">Turn Differential:</span> <span id="turn-diff">0</span></div>
+                    </div>
+                </div>
+                
+                <div class="keyboard-hint">
+                    <strong>Keyboard Controls:</strong>
+                    <div>↑/↓: Forward/Backward (step: 5)</div>
+                    <div>←/→: Turn Left/Right (step: 15)</div>
+                    <div><strong>K: Kill Switch (Stop All)</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const img = document.getElementById('camera');
+        const statusText = document.getElementById('status-text');
+        let lastTimestamp = null;
+        let errorCount = 0;
+        const yoloEnabled = {{ 'true' if yolo_enabled else 'false' }};
+        let imageUrl = yoloEnabled ? '/static/latest_detected.jpg' : '/static/latest.jpg';
+        
+        // Settings elements
+        const brightnessSlider = document.getElementById('brightness');
+        const brightnessValue = document.getElementById('brightness-value');
+        const yoloCheckbox = document.getElementById('yolo-enabled');
+        const histogramCheckbox = document.getElementById('histogram-eq');
+        const gaussianBlurCheckbox = document.getElementById('gaussian-blur');
+        
+        // Load current settings
+        async function loadSettings() {
+            try {
+                const res = await fetch('/settings');
+                const data = await res.json();
+                brightnessSlider.value = data.brightness || 1.0;
+                brightnessValue.textContent = data.brightness || 1.0;
+                yoloCheckbox.checked = data.yolo_enabled !== false;
+                histogramCheckbox.checked = data.histogram_eq || false;
+                gaussianBlurCheckbox.checked = data.gaussian_blur || false;
+            } catch (err) {
+                console.error("Failed to load settings:", err);
+            }
+        }
+        
+        // Update settings on server
+        async function updateSettings() {
+            const settings = {
+                brightness: parseFloat(brightnessSlider.value),
+                yolo_enabled: yoloCheckbox.checked,
+                histogram_eq: histogramCheckbox.checked,
+                gaussian_blur: gaussianBlurCheckbox.checked
+            };
+            
+            brightnessValue.textContent = settings.brightness.toFixed(1);
+            const newImageUrl = settings.yolo_enabled ? '/static/latest_detected.jpg' : '/static/latest.jpg';
+            if (newImageUrl !== imageUrl) {
+                imageUrl = newImageUrl;
+                // Force image update
+                lastTimestamp = null;
+                checkForUpdate();
+            }
+            
+            try {
+                await fetch('/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(settings)
+                });
+            } catch (err) {
+                console.error("Failed to update settings:", err);
+            }
+        }
+        
+        // Event listeners
+        brightnessSlider.addEventListener('input', updateSettings);
+        yoloCheckbox.addEventListener('change', updateSettings);
+        histogramCheckbox.addEventListener('change', updateSettings);
+        gaussianBlurCheckbox.addEventListener('change', updateSettings);
+        
+        // Load settings on page load
+        loadSettings();
+
+        async function checkForUpdate() {
+            try {
+                const res = await fetch('/image_info');
+                const data = await res.json();
+
+                if (data.timestamp && data.timestamp !== lastTimestamp) {
+                    lastTimestamp = data.timestamp;
+                    const newSrc = `${imageUrl}?${data.timestamp}`;
+                    
+                    const tempImg = new Image();
+                    tempImg.onload = () => {
+                        img.src = newSrc;
+                        img.classList.remove('visible');
+                        requestAnimationFrame(() => {
+                            img.classList.add('visible');
+                            statusText.textContent = 'Live';
+                            errorCount = 0;
+                        });
+                    };
+                    tempImg.onerror = () => {
+                        // Fallback to original image if detected version doesn't exist
+                        if (yoloEnabled) {
+                            img.src = `/static/latest.jpg?${data.timestamp}`;
+                            statusText.textContent = 'Live (No detection)';
+                        } else {
+                            statusText.textContent = 'Connection error';
+                            statusText.style.color = '#f44336';
+                        }
+                        img.classList.add('visible');
+                    };
+                    tempImg.src = newSrc;
+                } else if (!data.timestamp) {
+                    statusText.textContent = 'Waiting for image...';
+                }
+            } catch (err) {
+                console.error("Update check failed:", err);
+                errorCount++;
+                if (errorCount > 3) {
+                    statusText.textContent = 'Connection error';
+                    statusText.style.color = '#f44336';
+                }
+            } finally {
+                setTimeout(checkForUpdate, 500); // check every 500ms for smoother updates
+            }
+        }
+
+        window.onload = () => {
+            img.classList.add('visible');
+            checkForUpdate();
+        };
+        
+        // ==================== ROBOT CONTROL ====================
+        
+        // Robot state
+        let baseVelocity = 0;  // -255 to 255
+        let turnDifferential = 0;  // accumulated turn difference
+        
+        // Motor speed constraints
+        const MIN_SPEED = 230;
+        const MAX_SPEED = 255;
+        const VELOCITY_STEP = 5;
+        const TURN_STEP = 15;
+        
+        // Key state tracking to prevent repeat
+        const keyState = {};
+        
+        // Update rover visualization
+        function updateRoverViz() {
+            const motors = calculateMotorSpeeds();
+            
+            // Update wheel displays
+            updateWheel('wheel-fl', motors.fl);
+            updateWheel('wheel-fr', motors.fr);
+            updateWheel('wheel-bl', motors.bl);
+            updateWheel('wheel-br', motors.br);
+            
+            // Update info display
+            document.getElementById('base-vel').textContent = baseVelocity;
+            document.getElementById('turn-diff').textContent = turnDifferential;
+        }
+        
+        function updateWheel(id, speed) {
+            const wheel = document.getElementById(id);
+            wheel.textContent = speed;
+            
+            // Remove all state classes
+            wheel.classList.remove('forward', 'backward', 'stopped');
+            
+            // Add appropriate class
+            if (speed > 0) {
+                wheel.classList.add('forward');
+            } else if (speed < 0) {
+                wheel.classList.add('backward');
+            } else {
+                wheel.classList.add('stopped');
+            }
+        }
+        
+        // Calculate motor speeds with constraints
+        function calculateMotorSpeeds() {
+            let fl, fr, bl, br;
+            let effectiveBase = baseVelocity;
+            
+            // Special case: if base is 0 and we're turning, set appropriate base speed
+            // to ensure motors meet minimum threshold
+            if (baseVelocity === 0 && turnDifferential !== 0) {
+                // Set base to accommodate turn differential
+                // With base=245 and diff=±15: one side=230, other side=255 (after capping)
+                // For larger diffs, calculate required base but ensure it's feasible
+                const absDiff = Math.abs(turnDifferential);
+                // Need: effectiveBase - absDiff >= 230 AND effectiveBase + absDiff <= 255
+                // This requires: effectiveBase >= 230 + absDiff AND effectiveBase <= 255 - absDiff
+                // This is only possible if: 230 + absDiff <= 255 - absDiff, i.e., absDiff <= 12.5
+                // For diffs > 12.5, we'll use base=245 and let constraint handle the rest
+                if (absDiff <= 25) {
+                    effectiveBase = 245;  // Works well for typical turn ranges
+                } else {
+                    // For very large diffs, adjust base to minimize invalid speeds
+                    effectiveBase = Math.max(245, Math.min(255 - absDiff, 230 + absDiff));
+                    if (effectiveBase < 230) {
+                        effectiveBase = 245;  // Fallback
+                    }
+                }
+            }
+            
+            // Apply turn differential
+            // Left motors get +turnDifferential, right motors get -turnDifferential
+            // For left turn (negative diff): left slower, right faster
+            // For right turn (positive diff): left faster, right slower
+            fl = effectiveBase + turnDifferential;
+            fr = effectiveBase - turnDifferential;
+            bl = effectiveBase + turnDifferential;
+            br = effectiveBase - turnDifferential;
+            
+            // Constrain each motor to valid range
+            fl = constrainMotorSpeed(fl);
+            fr = constrainMotorSpeed(fr);
+            bl = constrainMotorSpeed(bl);
+            br = constrainMotorSpeed(br);
+            
+            // If all motors ended up at 0 when we were trying to turn from 0, reset turn differential
+            if (baseVelocity === 0 && fl === 0 && fr === 0 && bl === 0 && br === 0 && turnDifferential !== 0) {
+                turnDifferential = 0;
+                // Recalculate with turnDifferential = 0
+                fl = fr = bl = br = 0;
+            }
+            
+            return { fl, fr, bl, br };
+        }
+        
+        function constrainMotorSpeed(speed) {
+            if (speed === 0) return 0;
+            
+            const absSpeed = Math.abs(speed);
+            
+            // If speed is non-zero but below minimum, set to 0
+            if (absSpeed < MIN_SPEED) {
+                return 0;
+            }
+            
+            // Cap at maximum
+            if (absSpeed > MAX_SPEED) {
+                return speed > 0 ? MAX_SPEED : -MAX_SPEED;
+            }
+            
+            // Ensure it's within valid range
+            if (absSpeed >= MIN_SPEED && absSpeed <= MAX_SPEED) {
+                return speed;
+            }
+            
+            return 0;
+        }
+        
+        // Handle velocity changes
+        function adjustVelocity(direction) {
+            if (direction === 'up') {
+                // Increment forward
+                if (baseVelocity === 0) {
+                    // Jump directly to minimum valid speed when starting from 0
+                    baseVelocity = MIN_SPEED;
+                } else if (baseVelocity > 0) {
+                    baseVelocity = Math.min(baseVelocity + VELOCITY_STEP, MAX_SPEED);
+                } else {
+                    // Coming from negative, move toward 0
+                    baseVelocity = Math.min(baseVelocity + VELOCITY_STEP, 0);
+                }
+            } else if (direction === 'down') {
+                // Decrement or go backward
+                if (baseVelocity === 0) {
+                    // Jump directly to minimum valid backward speed when starting from 0
+                    baseVelocity = -MIN_SPEED;
+                } else if (baseVelocity > 0) {
+                    // Moving from positive toward 0
+                    baseVelocity = Math.max(baseVelocity - VELOCITY_STEP, 0);
+                } else {
+                    // Moving backward (negative)
+                    baseVelocity = Math.max(baseVelocity - VELOCITY_STEP, -MAX_SPEED);
+                }
+            }
+            
+            // Check if baseVelocity is in invalid range (between 0 and MIN_SPEED, or between -MIN_SPEED and 0)
+            // If so, set it to 0 to ensure clean zero crossing
+            if (baseVelocity > 0 && baseVelocity < MIN_SPEED) {
+                baseVelocity = 0;
+            } else if (baseVelocity < 0 && baseVelocity > -MIN_SPEED) {
+                baseVelocity = 0;
+            }
+            
+            // If base becomes 0, reset turn differential if needed
+            if (baseVelocity === 0 && turnDifferential !== 0) {
+                // Keep differential but will need special handling in calculateMotorSpeeds
+            }
+            
+            updateAndSend();
+        }
+        
+        // Handle turn changes
+        function adjustTurn(direction) {
+            if (direction === 'left') {
+                turnDifferential = Math.max(turnDifferential - TURN_STEP, -MAX_SPEED);
+            } else if (direction === 'right') {
+                turnDifferential = Math.min(turnDifferential + TURN_STEP, MAX_SPEED);
+            }
+            
+            // If base is 0 and we're turning, we'll handle it in calculateMotorSpeeds
+            updateAndSend();
+        }
+        
+        // Kill switch
+        function killSwitch() {
+            baseVelocity = 0;
+            turnDifferential = 0;
+            updateAndSend();
+        }
+        
+        // Update visualization and send commands
+        function updateAndSend() {
+            updateRoverViz();
+            sendMotorCommand();
+        }
+        
+        // Send motor command to server
+        async function sendMotorCommand() {
+            const motors = calculateMotorSpeeds();
+            
+            try {
+                const response = await fetch('/robot/move', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fl: motors.fl,
+                        fr: motors.fr,
+                        bl: motors.bl,
+                        br: motors.br
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    console.error('Robot command failed:', error);
+                }
+            } catch (err) {
+                console.error('Error sending robot command:', err);
+            }
+        }
+        
+        // Keyboard event handling
+        document.addEventListener('keydown', (e) => {
+            // Prevent default for arrow keys
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+            }
+            
+            // Prevent key repeat
+            if (keyState[e.key]) {
+                return;
+            }
+            keyState[e.key] = true;
+            
+            switch (e.key) {
+                case 'ArrowUp':
+                    adjustVelocity('up');
+                    break;
+                case 'ArrowDown':
+                    adjustVelocity('down');
+                    break;
+                case 'ArrowLeft':
+                    adjustTurn('left');
+                    break;
+                case 'ArrowRight':
+                    adjustTurn('right');
+                    break;
+                case 'k':
+                case 'K':
+                    killSwitch();
+                    break;
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keyState[e.key] = false;
+        });
+        
+        // Initialize rover visualization
+        updateRoverViz();
+        
+        // Send initial stop command
+        sendMotorCommand();
+    </script>
+</body>
+</html>
+
